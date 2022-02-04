@@ -370,7 +370,8 @@ function serialize(s::ClusterSerializer, f::Future)
         p = worker_id_from_socket(s.io)
         (p !== f.where) && send_add_client(f, p)
     end
-    invoke(serialize, Tuple{ClusterSerializer, Any}, s, f)
+    fc = Future((f.where, f.whence, f.id, v_cache)) # copy to be used for serialization (contains a reset lock)
+    invoke(serialize, Tuple{ClusterSerializer, Any}, s, fc)
 end
 
 function serialize(s::ClusterSerializer, rr::RemoteChannel)
@@ -422,7 +423,10 @@ end
 # make a thunk to call f on args in a way that simulates what would happen if
 # the function were sent elsewhere
 function local_remotecall_thunk(f, args, kwargs)
-    return ()->invokelatest(f, args...; kwargs...)
+    if isempty(args) && isempty(kwargs)
+        return f
+    end
+    return ()->f(args...; kwargs...)
 end
 
 function remotecall(f, w::LocalProcess, args...; kwargs...)
@@ -653,7 +657,7 @@ fetch_ref(rid, args...) = fetch(lookup_ref(rid).c, args...)
 Wait for and get a value from a [`RemoteChannel`](@ref). Exceptions raised are the
 same as for a [`Future`](@ref). Does not remove the item fetched.
 """
-fetch(r::RemoteChannel, args...) = call_on_owner(fetch_ref, r, args...)::eltype(r)
+fetch(r::RemoteChannel, args...) = call_on_owner(fetch_ref, r, args...)
 
 isready(rv::RemoteValue, args...) = isready(rv.c, args...)
 
@@ -734,15 +738,7 @@ function take_ref(rid, caller, args...)
         lock(rv.synctake)
     end
 
-    v = try
-        take!(rv, args...)
-    catch e
-        # avoid unmatched unlock when exception occurs
-        # github issue #33972
-        synctake && unlock(rv.synctake)
-        rethrow(e)
-    end
-
+    v=take!(rv, args...)
     isa(v, RemoteException) && (myid() == caller) && throw(v)
 
     if synctake
@@ -758,7 +754,7 @@ end
 Fetch value(s) from a [`RemoteChannel`](@ref) `rr`,
 removing the value(s) in the process.
 """
-take!(rr::RemoteChannel, args...) = call_on_owner(take_ref, rr, myid(), args...)::eltype(rr)
+take!(rr::RemoteChannel, args...) = call_on_owner(take_ref, rr, myid(), args...)
 
 # close and isopen are not supported on Future
 
