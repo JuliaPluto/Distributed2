@@ -1,4 +1,4 @@
-# [Distributed Computing](@id man-distributed)
+# Distributed Computing
 
 ```@docs
 Distributed.addprocs

@@ -1,13 +1,13 @@
 # This file is a part of Julia. License is MIT: https://julialang.org/license
 
-using Test, Distributed2, Random, Serialization, Sockets
-import Distributed2: launch, manage
+using Test, Distributed, Random, Serialization, Sockets
+import Distributed: launch, manage
 
 @test cluster_cookie() isa String
 
 include(joinpath(Sys.BINDIR, "..", "share", "julia", "test", "testenv.jl"))
 
-@test Distributed2.extract_imports(:(begin; import Foo, Bar; let; using Baz; end; end)) ==
+@test Distributed.extract_imports(:(begin; import Foo, Bar; let; using Baz; end; end)) ==
       Any[:(import Foo, Bar), :(using Baz)]
 
 # Test a few "remote" invocations when no workers are present
@@ -46,11 +46,11 @@ id_me = myid()
 id_other = filter(x -> x != id_me, procs())[rand(1:(nprocs()-1))]
 
 # Test role
-@everywhere using Distributed2
-@test Distributed2.myrole() === :master
+@everywhere using Distributed
+@test Distributed.myrole() === :master
 for wid = workers()
     wrole = remotecall_fetch(wid) do
-        Distributed2.myrole()
+        Distributed.myrole()
     end
     @test wrole === :worker
 end
@@ -171,21 +171,21 @@ function test_futures_dgc(id)
     fid = remoteref_id(f)
 
     # remote value should be deleted after a fetch
-    @test remotecall_fetch(k->(yield();haskey(Distributed2.PGRP.refs, k)), id, fid) == true
+    @test remotecall_fetch(k->(yield();haskey(Distributed.PGRP.refs, k)), id, fid) == true
     @test f.v === nothing
     @test fetch(f) == id
     @test f.v !== nothing
     yield(); # flush gc msgs
-    @test poll_while(() -> remotecall_fetch(k->(yield();haskey(Distributed2.PGRP.refs, k)), id, fid))
+    @test poll_while(() -> remotecall_fetch(k->(yield();haskey(Distributed.PGRP.refs, k)), id, fid))
 
     # if unfetched, it should be deleted after a finalize
     f = remotecall(myid, id)
     fid = remoteref_id(f)
-    @test remotecall_fetch(k->(yield();haskey(Distributed2.PGRP.refs, k)), id, fid) == true
+    @test remotecall_fetch(k->(yield();haskey(Distributed.PGRP.refs, k)), id, fid) == true
     @test f.v === nothing
     finalize(f)
     yield(); # flush gc msgs
-    @test poll_while(() -> remotecall_fetch(k->(yield();haskey(Distributed2.PGRP.refs, k)), id, fid))
+    @test poll_while(() -> remotecall_fetch(k->(yield();haskey(Distributed.PGRP.refs, k)), id, fid))
 end
 
 test_futures_dgc(id_me)
@@ -201,23 +201,23 @@ fstore = RemoteChannel(wid2)
 put!(fstore, f)
 
 @test fetch(f) == wid1
-@test remotecall_fetch(k->haskey(Distributed2.PGRP.refs, k), wid1, fid) == true
+@test remotecall_fetch(k->haskey(Distributed.PGRP.refs, k), wid1, fid) == true
 remotecall_fetch(r->(fetch(fetch(r)); yield()), wid2, fstore)
 sleep(0.5) # to ensure that wid2 gc messages have been executed on wid1
-@test remotecall_fetch(k->haskey(Distributed2.PGRP.refs, k), wid1, fid) == false
+@test remotecall_fetch(k->haskey(Distributed.PGRP.refs, k), wid1, fid) == false
 
 # put! should release remote reference since it would have been cached locally
 f = Future(wid1)
 fid = remoteref_id(f)
 
 # should not be created remotely till accessed
-@test remotecall_fetch(k->haskey(Distributed2.PGRP.refs, k), wid1, fid) == false
+@test remotecall_fetch(k->haskey(Distributed.PGRP.refs, k), wid1, fid) == false
 # create it remotely
 isready(f)
 
-@test remotecall_fetch(k->haskey(Distributed2.PGRP.refs, k), wid1, fid) == true
+@test remotecall_fetch(k->haskey(Distributed.PGRP.refs, k), wid1, fid) == true
 put!(f, :OK)
-@test remotecall_fetch(k->haskey(Distributed2.PGRP.refs, k), wid1, fid) == false
+@test remotecall_fetch(k->haskey(Distributed.PGRP.refs, k), wid1, fid) == false
 @test fetch(f) == :OK
 
 # RemoteException should be thrown on a put! when another process has set the value
@@ -228,7 +228,7 @@ fstore = RemoteChannel(wid2)
 put!(fstore, f) # send f to wid2
 put!(f, :OK) # set value from master
 
-@test remotecall_fetch(k->haskey(Distributed2.PGRP.refs, k), wid1, fid) == true
+@test remotecall_fetch(k->haskey(Distributed.PGRP.refs, k), wid1, fid) == true
 
 testval = remotecall_fetch(wid2, fstore) do x
     try
@@ -251,16 +251,16 @@ end
 end
 
 f = remotecall_wait(identity, id_other, ones(10))
-rrid = Distributed2.RRID(f.whence, f.id)
+rrid = Distributed.RRID(f.whence, f.id)
 remotecall_fetch(f25847, id_other, f)
-@test BitSet([id_me]) == remotecall_fetch(()->Distributed2.PGRP.refs[rrid].clientset, id_other)
+@test BitSet([id_me]) == remotecall_fetch(()->Distributed.PGRP.refs[rrid].clientset, id_other)
 
 remotecall_fetch(f25847, id_other, f)
-@test BitSet([id_me]) == remotecall_fetch(()->Distributed2.PGRP.refs[rrid].clientset, id_other)
+@test BitSet([id_me]) == remotecall_fetch(()->Distributed.PGRP.refs[rrid].clientset, id_other)
 
 finalize(f)
 yield() # flush gc msgs
-@test false == remotecall_fetch(chk_rrid->(yield(); haskey(Distributed2.PGRP.refs, chk_rrid)), id_other, rrid)
+@test false == remotecall_fetch(chk_rrid->(yield(); haskey(Distributed.PGRP.refs, chk_rrid)), id_other, rrid)
 
 
 # Distributed GC tests for RemoteChannels
@@ -270,12 +270,12 @@ function test_remoteref_dgc(id)
     rrid = remoteref_id(rr)
 
     # remote value should be deleted after finalizing the ref
-    @test remotecall_fetch(k->(yield();haskey(Distributed2.PGRP.refs, k)), id, rrid) == true
+    @test remotecall_fetch(k->(yield();haskey(Distributed.PGRP.refs, k)), id, rrid) == true
     @test fetch(rr) == :OK
-    @test remotecall_fetch(k->(yield();haskey(Distributed2.PGRP.refs, k)), id, rrid) == true
+    @test remotecall_fetch(k->(yield();haskey(Distributed.PGRP.refs, k)), id, rrid) == true
     finalize(rr)
     yield(); # flush gc msgs
-    @test poll_while(() -> remotecall_fetch(k->(yield();haskey(Distributed2.PGRP.refs, k)), id, rrid))
+    @test poll_while(() -> remotecall_fetch(k->(yield();haskey(Distributed.PGRP.refs, k)), id, rrid))
 end
 test_remoteref_dgc(id_me)
 test_remoteref_dgc(id_other)
@@ -289,16 +289,16 @@ let wid1 = workers()[1],
 
     put!(fstore, rr)
     if include_thread_unsafe()
-        @test remotecall_fetch(k -> haskey(Distributed2.PGRP.refs, k), wid1, rrid) == true
+        @test remotecall_fetch(k -> haskey(Distributed.PGRP.refs, k), wid1, rrid) == true
     end
     finalize(rr) # finalize locally
     yield() # flush gc msgs
     if include_thread_unsafe()
-        @test remotecall_fetch(k -> haskey(Distributed2.PGRP.refs, k), wid1, rrid) == true
+        @test remotecall_fetch(k -> haskey(Distributed.PGRP.refs, k), wid1, rrid) == true
     end
     remotecall_fetch(r -> (finalize(take!(r)); yield(); nothing), wid2, fstore) # finalize remotely
     sleep(0.5) # to ensure that wid2 messages have been executed on wid1
-    @test remotecall_fetch(k -> haskey(Distributed2.PGRP.refs, k), wid1, rrid) == false
+    @test remotecall_fetch(k -> haskey(Distributed.PGRP.refs, k), wid1, rrid) == false
 end
 
 # Tests for issue #23109 - should not hang.
@@ -341,7 +341,7 @@ test_indexing(RemoteChannel())
 test_indexing(RemoteChannel(id_other))
 
 # Test ser/deser to non-ClusterSerializer objects.
-function test_regular_io_ser(ref::Distributed2.AbstractRemoteRef)
+function test_regular_io_ser(ref::Distributed.AbstractRemoteRef)
     io = IOBuffer()
     serialize(io, ref)
     seekstart(io)
@@ -350,9 +350,6 @@ function test_regular_io_ser(ref::Distributed2.AbstractRemoteRef)
         v = getfield(ref2, fld)
         if isa(v, Number)
             @test v === zero(typeof(v))
-        elseif fld == :lock
-            @test v isa ReentrantLock
-            @test !islocked(v)
         elseif v !== nothing
             error(string("Add test for field ", fld))
         end
@@ -647,7 +644,7 @@ end
 n = 10
 as = [rand(4,4) for i in 1:n]
 bs = deepcopy(as)
-cs = collect(Distributed2.pgenerate(x->(sleep(rand()*0.1); svd(x)), bs))
+cs = collect(Distributed.pgenerate(x->(sleep(rand()*0.1); svd(x)), bs))
 svdas = map(svd, as)
 for i in 1:n
     @test cs[i].U ≈ svdas[i].U
@@ -696,8 +693,8 @@ if DoFullTest
     all_w = workers()
     # Test sending fake data to workers. The worker processes will print an
     # error message but should not terminate.
-    for w in Distributed2.PGRP.workers
-        if isa(w, Distributed2.Worker)
+    for w in Distributed.PGRP.workers
+        if isa(w, Distributed.Worker)
             local s = connect(w.config.host, w.config.port)
             write(s, randstring(32))
         end
@@ -841,16 +838,6 @@ v15406 = remotecall_wait(() -> 1, id_other)
 fetch(v15406)
 remotecall_wait(fetch, id_other, v15406)
 
-
-# issue #43396
-# Covers the remote fetch where the value returned is `nothing`
-# May be caused by attempting to unwrap a non-`Some` type with `something`
-# `call_on_owner` ref fetches return values not wrapped in `Some`
-# and have to be returned directly
-@test nothing === fetch(remotecall(() -> nothing, workers()[1]))
-@test 10 === fetch(remotecall(() -> 10, workers()[1]))
-
-
 # Test various forms of remotecall* invocations
 
 @everywhere f_args(v1, v2=0; kw1=0, kw2=0) = v1+v2+kw1+kw2
@@ -901,13 +888,6 @@ end
         end
         return :OK
     end, id_other, rc_unbuffered) == :OK
-
-# github issue 33972
-rc_unbuffered_other = RemoteChannel(()->Channel{Int}(0), id_other)
-close(rc_unbuffered_other)
-try; take!(rc_unbuffered_other); catch; end
-@test !remotecall_fetch(rc -> islocked(Distributed2.lookup_ref(remoteref_id(rc)).synctake),
-                        id_other, rc_unbuffered_other)
 
 # github PR #14456
 n = DoFullTest ? 6 : 5
@@ -1004,7 +984,7 @@ end
 
 # Test calling @everywhere from a module not defined on the workers
 module LocalBar
-    using Distributed2
+    using Distributed
     bar() = @everywhere new_bar()=myid()
 end
 LocalBar.bar()
@@ -1061,12 +1041,34 @@ end
 
 # Test addprocs enable_threaded_blas parameter
 
+const get_num_threads = function() # anonymous so it will be serialized when called
+    blas = LinearAlgebra.BLAS.vendor()
+    # Wrap in a try to catch unsupported blas versions
+    try
+        if blas == :openblas
+            return ccall((:openblas_get_num_threads, Base.libblas_name), Cint, ())
+        elseif blas == :openblas64
+            return ccall((:openblas_get_num_threads64_, Base.libblas_name), Cint, ())
+        elseif blas == :mkl
+            return ccall((:MKL_Get_Max_Num_Threads, Base.libblas_name), Cint, ())
+        end
+
+        # OSX BLAS looks at an environment variable
+        if Sys.isapple()
+            return tryparse(Cint, get(ENV, "VECLIB_MAXIMUM_THREADS", "1"))
+        end
+    catch
+    end
+
+    return nothing
+end
+
 function get_remote_num_threads(processes_added)
-    return [remotecall_fetch(BLAS.get_num_threads, proc_id) for proc_id in processes_added]
+    return [remotecall_fetch(get_num_threads, proc_id) for proc_id in processes_added]
 end
 
 function test_blas_config(pid, expected)
-    for worker in Distributed2.PGRP.workers
+    for worker in Distributed.PGRP.workers
         if worker.id == pid
             @test worker.config.enable_threaded_blas == expected
             return
@@ -1075,11 +1077,12 @@ function test_blas_config(pid, expected)
 end
 
 function test_add_procs_threaded_blas()
-    master_blas_thread_count = BLAS.get_num_threads()
+    master_blas_thread_count = get_num_threads()
     if master_blas_thread_count === nothing
         @warn "Skipping blas num threads tests due to unsupported blas version"
         return
     end
+    @test master_blas_thread_count <= 8 # check that Base set the environment variable in __init__ before LinearAlgebra dlopen'd it
 
     # Test with default enable_threaded_blas false
     processes_added = addprocs_with_testenv(2)
@@ -1088,7 +1091,7 @@ function test_add_procs_threaded_blas()
     end
 
     # Master thread should not have changed
-    @test BLAS.get_num_threads() == master_blas_thread_count
+    @test get_num_threads() == master_blas_thread_count
 
     # Threading disabled in children by default
     thread_counts_by_process = get_remote_num_threads(processes_added)
@@ -1102,9 +1105,9 @@ function test_add_procs_threaded_blas()
         test_blas_config(proc_id, true)
     end
 
-    @test BLAS.get_num_threads() == master_blas_thread_count
+    @test get_num_threads() == master_blas_thread_count
 
-    # BLAS.set_num_threads(`num`) doesn't  cause BLAS.get_num_threads to return `num`
+    # BLAS.set_num_threads(`num`) doesn't  cause get_num_threads to return `num`
     # depending on the machine, the BLAS version, and BLAS configuration, so
     # we need a very lenient test.
     thread_counts_by_process = get_remote_num_threads(processes_added)
@@ -1252,9 +1255,9 @@ global v4 = v3
 
 # Global references to Types and Modules should work if they are locally defined
 global v5 = Int
-global v6 = Distributed2
+global v6 = Distributed
 @test remotecall_fetch(()->v5, id_other) === Int
-@test remotecall_fetch(()->v6, id_other) === Distributed2
+@test remotecall_fetch(()->v6, id_other) === Distributed
 
 struct FooStructLocal end
 module FooModLocal end
@@ -1387,7 +1390,7 @@ wrapped_var_ser_tests()
 global ids_cleanup = fill(1., 6)
 global ids_func = ()->ids_cleanup
 
-clust_ser = (Distributed2.worker_from_id(id_other)).w_serializer
+clust_ser = (Distributed.worker_from_id(id_other)).w_serializer
 @test remotecall_fetch(ids_func, id_other) == ids_cleanup
 
 # TODO Add test for cleanup from `clust_ser.glbs_in_tnobj`
@@ -1556,10 +1559,10 @@ function launch(manager::WorkerArgTester, params::Dict, launched::Array, c::Cond
     exename = params[:exename]
     exeflags = params[:exeflags]
 
-    cmd = `$exename $exeflags --bind-to $(Distributed2.LPROC.bind_addr) $(manager.worker_opt)`
+    cmd = `$exename $exeflags --bind-to $(Distributed.LPROC.bind_addr) $(manager.worker_opt)`
     cmd = pipeline(detach(setenv(cmd, dir=dir)))
     io = open(cmd, "r+")
-    manager.write_cookie && Distributed2.write_cookie(io)
+    manager.write_cookie && Distributed.write_cookie(io)
 
     wconfig = WorkerConfig()
     wconfig.process = io
@@ -1596,8 +1599,8 @@ function launch(manager::RetainStdioTester, params::Dict, launched::Array, c::Co
     exename = params[:exename]
     exeflags = params[:exeflags]
 
-    jlcmd = "using Distributed2; start_worker(\"\"; close_stdin=$(manager.close_stdin), stderr_to_stdout=$(manager.stderr_to_stdout));"
-    cmd = detach(setenv(`$exename $exeflags --bind-to $(Distributed2.LPROC.bind_addr) -e $jlcmd`, dir=dir))
+    jlcmd = "using Distributed; start_worker(\"\"; close_stdin=$(manager.close_stdin), stderr_to_stdout=$(manager.stderr_to_stdout));"
+    cmd = detach(setenv(`$exename $exeflags --bind-to $(Distributed.LPROC.bind_addr) -e $jlcmd`, dir=dir))
     proc = open(cmd, "r+")
 
     wconfig = WorkerConfig()
@@ -1635,7 +1638,7 @@ function reuseport_tests()
         remotecall_fetch(p) do
             ports_lower = []        # ports of pids lower than myid()
             ports_higher = []       # ports of pids higher than myid()
-            for w in Distributed2.PGRP.workers
+            for w in Distributed.PGRP.workers
                 w.id == myid() && continue
                 port = Sockets._sockname(w.r_stream, true)[2]
                 if (w.id == 1)
@@ -1686,38 +1689,38 @@ end
 
 # issue #28966
 let code = """
-    import Distributed2
-    Distributed2.addprocs(1)
-    Distributed2.@everywhere f() = myid()
-    for w in Distributed2.workers()
-        @assert Distributed2.remotecall_fetch(f, w) == w
+    import Distributed
+    Distributed.addprocs(1)
+    Distributed.@everywhere f() = myid()
+    for w in Distributed.workers()
+        @assert Distributed.remotecall_fetch(f, w) == w
     end
     """
     @test success(`$(Base.julia_cmd()) --startup-file=no -e $code`)
 end
 
-# PR 32431: tests for internal Distributed2.head_and_tail
-let (h, t) = Distributed2.head_and_tail(1:10, 3)
+# PR 32431: tests for internal Distributed.head_and_tail
+let (h, t) = Distributed.head_and_tail(1:10, 3)
     @test h == 1:3
     @test collect(t) == 4:10
 end
-let (h, t) = Distributed2.head_and_tail(1:10, 0)
+let (h, t) = Distributed.head_and_tail(1:10, 0)
     @test h == []
     @test collect(t) == 1:10
 end
-let (h, t) = Distributed2.head_and_tail(1:3, 5)
+let (h, t) = Distributed.head_and_tail(1:3, 5)
     @test h == 1:3
     @test collect(t) == []
 end
-let (h, t) = Distributed2.head_and_tail(1:3, 3)
+let (h, t) = Distributed.head_and_tail(1:3, 3)
     @test h == 1:3
     @test collect(t) == []
 end
-let (h, t) = Distributed2.head_and_tail(Int[], 3)
+let (h, t) = Distributed.head_and_tail(Int[], 3)
     @test h == []
     @test collect(t) == []
 end
-let (h, t) = Distributed2.head_and_tail(Int[], 0)
+let (h, t) = Distributed.head_and_tail(Int[], 0)
     @test h == []
     @test collect(t) == []
 end
