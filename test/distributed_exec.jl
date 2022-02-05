@@ -1004,7 +1004,7 @@ end
 
 # Test calling @everywhere from a module not defined on the workers
 module LocalBar
-    using Distributed
+    using Distributed2
     bar() = @everywhere new_bar()=myid()
 end
 LocalBar.bar()
@@ -1252,9 +1252,9 @@ global v4 = v3
 
 # Global references to Types and Modules should work if they are locally defined
 global v5 = Int
-global v6 = Distributed
+global v6 = Distributed2
 @test remotecall_fetch(()->v5, id_other) === Int
-@test remotecall_fetch(()->v6, id_other) === Distributed
+@test remotecall_fetch(()->v6, id_other) === Distributed2
 
 struct FooStructLocal end
 module FooModLocal end
@@ -1596,7 +1596,7 @@ function launch(manager::RetainStdioTester, params::Dict, launched::Array, c::Co
     exename = params[:exename]
     exeflags = params[:exeflags]
 
-    jlcmd = "using Distributed; start_worker(\"\"; close_stdin=$(manager.close_stdin), stderr_to_stdout=$(manager.stderr_to_stdout));"
+    jlcmd = "using Distributed2; start_worker(\"\"; close_stdin=$(manager.close_stdin), stderr_to_stdout=$(manager.stderr_to_stdout));"
     cmd = detach(setenv(`$exename $exeflags --bind-to $(Distributed2.LPROC.bind_addr) -e $jlcmd`, dir=dir))
     proc = open(cmd, "r+")
 
@@ -1686,7 +1686,7 @@ end
 
 # issue #28966
 let code = """
-    import Distributed
+    import Distributed2
     Distributed2.addprocs(1)
     Distributed2.@everywhere f() = myid()
     for w in Distributed2.workers()
